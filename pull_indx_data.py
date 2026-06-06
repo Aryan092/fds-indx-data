@@ -85,14 +85,21 @@ def pull_one_ticker(ticker):
     return m1, m5
 
 
-def add_volatility(m1_df, m5_df):
-    for df, periods_per_day in [(m1_df, 390), (m5_df, 78)]:
-        close = df["close"].copy()
-        returns = close.pct_change().dropna()
-        rv_daily = returns.resample("D").apply(lambda x: np.sqrt(np.sum(x**2)))
-        rv_ann = rv_daily * np.sqrt(252)
-        df["rv_daily"] = rv_daily.reindex(df.index, method="ffill")
-        df["rv_ann"] = rv_ann.reindex(df.index, method="ffill")
+def compute_volatility(m1_df, m5_df):
+    if m1_df.empty:
+        return pd.DataFrame()
+
+    r1, r5 = [], []
+    for date, grp in m1_df.groupby(m1_df.index.date):
+        rv = np.sqrt(np.sum(grp["close"].pct_change().dropna() ** 2))
+        r1.append({"date": date, "rv_daily_1m": rv, "rv_ann_1m": rv * np.sqrt(390)})
+    for date, grp in m5_df.groupby(m5_df.index.date):
+        rv = np.sqrt(np.sum(grp["close"].pct_change().dropna() ** 2))
+        r5.append({"date": date, "rv_daily_5m": rv, "rv_ann_5m": rv * np.sqrt(78)})
+
+    v = pd.DataFrame(r1).set_index("date").join(pd.DataFrame(r5).set_index("date"))
+    v.index.name = "date"
+    return v.dropna()
 
 
 print(f"Tickers: {TICKERS}")
@@ -111,11 +118,13 @@ with ThreadPoolExecutor(max_workers=5) as executor:
             result = future.result()
             if result:
                 m1, m5 = result
-                add_volatility(m1, m5)
                 m1.to_csv(OUTPUT_DIR / f"{ticker}_1min.csv")
                 m5.to_csv(OUTPUT_DIR / f"{ticker}_5min.csv")
 
-                print(f"  [DONE] {ticker}: {len(m1):,} 1-min bars, {len(m5):,} 5-min bars")
+                vol = compute_volatility(m1, m5)
+                vol.to_csv(OUTPUT_DIR / f"{ticker}_volatility.csv")
+
+                print(f"  [DONE] {ticker}: {len(m1):,} 1-min, {len(m5):,} 5-min, {len(vol):,} vol obs")
             else:
                 print(f"  [FAIL] {ticker}: no data")
         except Exception as e:
