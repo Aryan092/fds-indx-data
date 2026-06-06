@@ -1,0 +1,18 @@
+# Credentials
+creds.md
+
+# Jupyter
+.ipynb_checkpoints/
+Untitled.ipynb
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Environment
+.python-version
+uv.lock
+
+# Misc
+*.pdf
